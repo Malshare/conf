@@ -35,3 +35,9 @@ mkdir conf-src
 cd conf-src
 docker compose up
 ```
+
+# GitHub Setup
+
+https://github.com/Malshare/conf/settings/secrets/actions contains all secrets needed by the files in `.gitlab` to
+deploy things. In particular, the following variable: `SERVER_HOST`, `SERVER_SSH_KEY`, and `SERVER_USER`. To
+emergency-disable this access, just remove the key `github-deploy` from `/root/.ssh/authorized_keys`.
