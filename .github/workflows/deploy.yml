@@ -21,6 +21,7 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           source: "src/*"
           target: "/root/conf-src"
+          strip_components: 1
 
       - name: Restart Docker Compose
         uses: appleboy/ssh-action@v0.1.7
