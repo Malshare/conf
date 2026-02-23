@@ -30,5 +30,6 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
+            chown -R root:root /root/conf-src
             cd /root/conf-src
             docker compose up -d
