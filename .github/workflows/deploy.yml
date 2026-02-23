@@ -30,4 +30,4 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             cd /root/conf-src
-            docker-compose up -d
+            docker compose up -d
