@@ -1,8 +1,5 @@
 services:
   web:
-    image: nginx:latest
+    image: ghcr.io/malshare/offline
     ports:
       - "80:80"
-    volumes:
-      - /opt/static_html:/usr/share/nginx/html:ro
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
