@@ -35,4 +35,4 @@ jobs:
             echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USER }}" --password-stdin
             chown -R root:root /root/conf-src
             cd /root/conf-src
-            docker compose up -d
+            docker compose up -d --pull always
