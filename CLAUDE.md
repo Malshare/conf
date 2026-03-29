@@ -19,7 +19,7 @@ Upstream push (Frontend or Offline)
 
 ## Key Files
 
-- `src/docker-compose.yml` — Production service definitions (currently runs Frontend on port 80)
+- `src/docker-compose.yml` — Production service definitions (frontend, cloudflared tunnel, generate-daily)
 - `src/frontend.env` — Environment variables for the frontend container (NOT committed with real secrets)
 - `.github/workflows/deploy.yml` — Deployment workflow triggered by push or upstream dispatch
 
@@ -31,6 +31,10 @@ Upstream push (Frontend or Offline)
 ## Server Layout
 
 On the production server, `src/*` is copied to `/root/conf-src/`. The `frontend.env` file must exist there alongside `docker-compose.yml`.
+
+## Shared Volumes
+
+- `daily_exports` — Written by `generate-daily`, mounted read-only into `frontend` at `/var/www/html/daily/`. Serves browsable directory listings of daily hash exports at the `/daily/` URL path.
 
 ---
 
