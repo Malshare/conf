@@ -8,10 +8,7 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
-    entrypoint:
-      - /bin/sh
-      - -c
-    command: 'cloudflared tunnel --no-autoupdate run --token "$CLOUDFLARE_TUNNEL_TOKEN"'
+    command: tunnel --no-autoupdate run
     depends_on:
       - frontend
     env_file:
