@@ -25,9 +25,36 @@ https://github.com/Malshare/conf/settings/secrets/actions contains all secrets n
 deploy things. In particular, the following variable: `SERVER_HOST`, `SERVER_SSH_KEY`, and `SERVER_USER`. To
 emergency-disable this access, just remove the key `github-deploy` from `/root/.ssh/authorized_keys`.
 
-There is also a Bot account with the GitHub username `malshare-bot`. Its purpose is to create a Personal Access Token
-(PAT) with read access to the container registry. Corresponding credentials are stored in `GHCR_USER` and `GHCR_TOKEN`.
+There is also a Bot account with the GitHub username `malshare-bot`. Its purpose is to create Personal Access Tokens
+(PATs) for CI/CD automation. Corresponding credentials are stored in `GHCR_USER` and `GHCR_TOKEN`.
+
+## Container Registry Authentication
+
+All GHCR packages in the `Malshare` org are **private**. The deploy workflow (`deploy.yml`) authenticates to GHCR on the
+server before pulling images, using the `GHCR_USER` and `GHCR_TOKEN` secrets. This means new images do not need to be
+made public — they are pulled via `docker login` with the `malshare-bot` credentials.
 
 This repository opts into the repository dispatch type `upstream-image-built` which will be triggered by other MalShare
 repositories on GitHub when they finished building their images. Each of those upstream repositories needs a PAT with
-write-access to this repository here.
+write-access to this repository here. This token is stored as `CONF_DISPATCH_TOKEN` in each upstream repo's Actions
+secrets.
+
+## Creating a `CONF_DISPATCH_TOKEN`
+
+When adding a new upstream repository that needs to trigger deployments:
+
+1. Log in as `malshare-bot` on GitHub
+2. Go to **Settings > Developer settings > Personal access tokens > Fine-grained tokens**
+3. Create a new token:
+   - **Name:** e.g. `conf-dispatch-<repo-name>`
+   - **Resource owner:** `Malshare`
+   - **Repository access:** select `Malshare/conf` only
+   - **Permissions:** Contents → Read and write
+4. Copy the token
+5. An **organization owner** must approve the token at **Malshare org > Settings > Personal access tokens > Pending requests**
+6. In the upstream repo (e.g. `Malshare/frontend`), go to **Settings > Secrets and variables > Actions**
+7. Add a new secret named `CONF_DISPATCH_TOKEN` with the token value
+
+Upstream repos that currently use this token:
+- `Malshare/offline`
+- `Malshare/frontend`
