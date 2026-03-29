@@ -13,3 +13,18 @@ services:
       - frontend
     env_file:
       - frontend.env
+
+  generate-daily:
+    image: ghcr.io/malshare/generate-daily
+    env_file:
+      - frontend.env
+    environment:
+      - OUTPUT_DIR=/daily
+    volumes:
+      - daily_exports:/daily
+    # Run once daily: execute script, sleep 24h, repeat
+    entrypoint: ["/bin/sh", "-c", "while true; do python3 -u generate_daily.py; sleep 86400; done"]
+    restart: unless-stopped
+
+volumes:
+  daily_exports:
