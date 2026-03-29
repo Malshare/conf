@@ -58,3 +58,16 @@ When adding a new upstream repository that needs to trigger deployments:
 Upstream repos that currently use this token:
 - `Malshare/offline`
 - `Malshare/frontend`
+
+# Frontend Tunnel
+
+The frontend is exposed through a Cloudflare Tunnel instead of binding port `80` on the host.
+
+## Setup
+
+1. Copy `src/frontend.env.example` to `src/frontend.env` and fill in the frontend secrets.
+2. In Cloudflare Zero Trust, create a tunnel for this host and copy its token into `CLOUDFLARE_TUNNEL_TOKEN` in `src/frontend.env`.
+3. In the tunnel's **Public Hostname** settings, point the hostname at `http://frontend:80`.
+4. Start the stack from `src/` with Docker Compose.
+
+This Compose stack keeps the `frontend` container private on the Docker network and lets `cloudflared` publish it securely through Cloudflare.

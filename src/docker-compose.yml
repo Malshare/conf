@@ -1,7 +1,15 @@
 services:
   frontend:
     image: ghcr.io/malshare/frontend
-    ports:
-      - "80:80"
+    expose:
+      - "80"
+    env_file:
+      - frontend.env
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    depends_on:
+      - frontend
     env_file:
       - frontend.env
