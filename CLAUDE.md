@@ -19,7 +19,7 @@ Upstream push (Frontend or Offline)
 
 ## Key Files
 
-- `src/docker-compose.yml` — Production service definitions (frontend, cloudflared tunnel, generate-daily)
+- `src/docker-compose.yml` — Production service definitions (frontend, cloudflared tunnel, upload-handler, generate-daily)
 - `src/frontend.env` — Environment variables for the frontend container (NOT committed with real secrets)
 - `.github/workflows/deploy.yml` — Deployment workflow triggered by push or upstream dispatch
 
@@ -114,15 +114,15 @@ Python backend for MalShare — handles work PHP can't do efficiently.
 
 ## Components
 
-- **`upload_handler.py`** — Long-running daemon that polls for pending samples, downloads from S3, detects file type (libmagic), computes ssdeep hash, runs YARA rules, and updates DB
+- **`upload_handler.py`** — Long-running daemon that polls for pending samples, downloads from S3, detects file type (libmagic), computes ssdeep hash, and updates DB
 - **`generate_daily.py`** — Generates daily hash export files (MD5, SHA1, SHA256, combined) for each day since the first sample. Also copies the latest day's files as `malshare.current.*` to the output root
 
 ## Key Files
 
 - `lib/db.py` — MariaDB database layer (uses `mariadb` Python package)
 - `lib/storage.py` — S3/Wasabi storage abstraction (boto3)
-- `lib/pymalshare.py` — Core class: YARA setup, sample processing, DB updates
-- `docker/Dockerfile.upload_handler` — Container for upload handler (python:3.10, needs yara/ssdeep/magic)
+- `lib/pymalshare.py` — Core class: sample processing, DB updates
+- `docker/Dockerfile.upload_handler` — Container for upload handler (python:3.13, needs ssdeep/magic)
 - `docker/Docker.generate_daily` — Container for daily export (python:3.13, needs mariadb client)
 
 ## Environment Variables
@@ -135,10 +135,6 @@ Python backend for MalShare — handles work PHP can't do efficiently.
 
 ### Output (generate_daily only)
 `OUTPUT_DIR` — directory for generated hash lists
-
-## YARA Rules
-
-Loaded from `/Yaggy/rules/` with 5 rule sets: CuckooSandbox, YRP, FlorianRoth, KevTheHermit, BamfDetect. The `Yaggy` directory must be copied into the upload_handler container at build time.
 
 ---
 
@@ -158,3 +154,4 @@ All repos follow the same deployment pattern:
 # Working Notes
 
 - When discovering new information about the projects (conf, Frontend, Offline, pymalshare), update both `CLAUDE.md` and `README.md` in the conf repo to keep them current.
+- The Frontend requires a FULLTEXT index (`ft_source`) on `tbl_sample_sources.source` for source searches. If deploying to a fresh database, ensure `malshare_db.sql` is loaded (it includes the index). For existing databases, run: `ALTER TABLE tbl_sample_sources ADD FULLTEXT KEY ft_source (source);`
