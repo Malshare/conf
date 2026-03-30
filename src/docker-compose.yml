@@ -16,6 +16,12 @@ services:
     env_file:
       - frontend.env
 
+  upload-handler:
+    image: ghcr.io/malshare/upload-handler
+    env_file:
+      - frontend.env
+    restart: unless-stopped
+
   generate-daily:
     image: ghcr.io/malshare/generate-daily
     env_file:
