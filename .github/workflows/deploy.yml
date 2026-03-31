@@ -7,13 +7,16 @@ on:
   repository_dispatch:
     types: [ upstream-image-built ]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Sync files to server
         uses: appleboy/scp-action@v0.1.4
