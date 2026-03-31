@@ -31,8 +31,9 @@ There is also a Bot account with the GitHub username `malshare-bot`. Its purpose
 ## Container Registry Authentication
 
 All GHCR packages in the `Malshare` org are **private**. The deploy workflow (`deploy.yml`) authenticates to GHCR on the
-server before pulling images, using the `GHCR_USER` and `GHCR_TOKEN` secrets. This means new images do not need to be
-made public — they are pulled via `docker login` with the `malshare-bot` credentials.
+server before pulling images, using the `GHCR_USER` and `GHCR_TOKEN` secrets. New GHCR packages created by CI inherit
+org-level permissions automatically — no manual adjustment needed. They are pulled via `docker login` with the
+`malshare-bot` credentials.
 
 This repository opts into the repository dispatch type `upstream-image-built` which will be triggered by other MalShare
 repositories on GitHub when they finished building their images. Each of those upstream repositories needs a PAT with
@@ -58,6 +59,7 @@ When adding a new upstream repository that needs to trigger deployments:
 Upstream repos that currently use this token:
 - `Malshare/offline`
 - `Malshare/frontend`
+- `Malshare/pymalshare`
 
 # Frontend Tunnel
 

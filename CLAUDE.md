@@ -19,7 +19,7 @@ Upstream push (Frontend or Offline)
 
 ## Key Files
 
-- `src/docker-compose.yml` — Production service definitions (frontend, cloudflared tunnel, upload-handler, generate-daily)
+- `src/docker-compose.yml` — Production service definitions (frontend, cloudflared tunnel, upload-handler, url-task-handler, generate-daily)
 - `src/frontend.env` — Environment variables for the frontend container (NOT committed with real secrets)
 - `.github/workflows/deploy.yml` — Deployment workflow triggered by push or upstream dispatch
 
@@ -115,6 +115,7 @@ Python backend for MalShare — handles work PHP can't do efficiently.
 ## Components
 
 - **`upload_handler.py`** — Long-running daemon that polls for pending samples, downloads from S3, detects file type (libmagic), computes ssdeep hash, and updates DB
+- **`url_task_handler.py`** — Long-running daemon that polls `tbl_url_download_tasks` for user-submitted URLs, downloads them via Tor (SOCKS5 proxy bundled in container), ingests as samples via `submit_buffer()`
 - **`generate_daily.py`** — Generates daily hash export files (MD5, SHA1, SHA256, combined) for each day since the first sample. Also copies the latest day's files as `malshare.current.*` to the output root
 
 ## Key Files
@@ -123,6 +124,7 @@ Python backend for MalShare — handles work PHP can't do efficiently.
 - `lib/storage.py` — S3/Wasabi storage abstraction (boto3)
 - `lib/pymalshare.py` — Core class: sample processing, DB updates
 - `docker/Dockerfile.upload_handler` — Container for upload handler (python:3.13, needs ssdeep/magic)
+- `docker/Dockerfile.url_task_handler` — Container for URL task handler (python:3.13, needs ssdeep/magic/tor)
 - `docker/Docker.generate_daily` — Container for daily export (python:3.13, needs mariadb client)
 
 ## Environment Variables
@@ -130,7 +132,7 @@ Python backend for MalShare — handles work PHP can't do efficiently.
 ### Database (both scripts)
 `MALSHARE_DB_HOST`, `MALSHARE_DB_USER`, `MALSHARE_DB_PASS`, `MALSHARE_DB_DATABASE` (default: `malshare_db`)
 
-### S3 Storage (upload_handler only)
+### S3 Storage (upload_handler, url_task_handler)
 `WASABI_BUCKET`, `WASABI_KEY`, `WASABI_SECRET`, `WASABI_ENDPOINT`
 
 ### Output (generate_daily only)
@@ -145,9 +147,9 @@ All repos follow the same deployment pattern:
 1. **Frontend**, **Offline**, and **pymalshare** are upstream image builders
 2. Upstream repos use `CONF_DISPATCH_TOKEN` (malshare-bot fine-grained PAT) to trigger conf
 3. **Conf** is the downstream deployer — receives dispatch events and deploys via SSH
-4. All container images are private in GHCR; malshare-bot authenticates to pull them
+4. All container images are private in GHCR; malshare-bot authenticates to pull them. New GHCR packages created by CI inherit org-level permissions automatically — no manual adjustment needed
 5. To switch between Frontend and Offline on the server, change the `image:` in `src/docker-compose.yml`
-6. pymalshare containers (generate-daily, upload-handler) run alongside the frontend as additional services
+6. pymalshare containers (generate-daily, upload-handler, url-task-handler) run alongside the frontend as additional services
 
 ---
 
