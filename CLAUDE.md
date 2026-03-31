@@ -158,3 +158,5 @@ All repos follow the same deployment pattern:
 
 - When discovering new information about the projects (conf, Frontend, Offline, pymalshare), update both `CLAUDE.md` and `README.md` in the conf repo to keep them current.
 - The Frontend requires a FULLTEXT index (`ft_source`) on `tbl_sample_sources.source` for source searches. If deploying to a fresh database, ensure `malshare_db.sql` is loaded (it includes the index). For existing databases, run: `ALTER TABLE tbl_sample_sources ADD FULLTEXT KEY ft_source (source);`
+- `tbl_url_download_tasks` uses `'1970-01-01 00:00:01'` (UTC) as the sentinel default for `started_at` and `finished_at` — NOT `01:00:01`. The url-task-handler polls for rows where `started_at` equals this value.
+- The schema file `malshare_db.sql` in the Frontend repo should be kept in sync with the production database. To get the current schema: `mysqldump --no-data -h HOST -u USER -p malshare_db`
