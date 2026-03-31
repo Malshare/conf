@@ -22,6 +22,12 @@ services:
       - frontend.env
     restart: unless-stopped
 
+  url-task-handler:
+    image: ghcr.io/malshare/url-task-handler
+    env_file:
+      - frontend.env
+    restart: unless-stopped
+
   generate-daily:
     image: ghcr.io/malshare/generate-daily
     env_file:
