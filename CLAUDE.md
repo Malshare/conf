@@ -4,7 +4,7 @@ Deployment and orchestration repository for MalShare server infrastructure.
 
 ## What This Repo Does
 
-Manages production Docker Compose config and CI/CD deployment. When upstream repos (Frontend, Offline) push to `main`, they build Docker images, push to GHCR, then trigger this repo's deploy workflow via `repository_dispatch`.
+Manages production Docker Compose config and CI/CD deployment. When upstream repos (Frontend, Offline, pymalshare) push to `main`, they build Docker images, push to GHCR, then trigger this repo's deploy workflow via `repository_dispatch`.
 
 ## Deployment Flow
 
