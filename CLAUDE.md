@@ -123,9 +123,10 @@ Python backend for MalShare — handles work PHP can't do efficiently.
 - `lib/db.py` — MariaDB database layer (uses `mariadb` Python package)
 - `lib/storage.py` — S3/Wasabi storage abstraction (boto3)
 - `lib/pymalshare.py` — Core class: sample processing, DB updates
-- `docker/Dockerfile.upload_handler` — Container for upload handler (python:3.13, needs ssdeep/magic)
-- `docker/Dockerfile.url_task_handler` — Container for URL task handler (python:3.13, needs ssdeep/magic/tor)
-- `docker/Docker.generate_daily` — Container for daily export (python:3.13, needs mariadb client)
+- `docker/Dockerfile.base` — Shared base image (`ghcr.io/malshare/pymalshare-base`) with python:3.13, ssdeep, libmagic, pymysql, boto3. All pymalshare services except generate-daily inherit from this
+- `docker/Dockerfile.upload_handler` — Upload handler, extends base
+- `docker/Dockerfile.url_task_handler` — URL task handler, extends base + adds tor and requests[socks]
+- `docker/Docker.generate_daily` — Daily export (independent, python:3.13 + mariadb client)
 
 ## Environment Variables
 
