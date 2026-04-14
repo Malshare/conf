@@ -48,5 +48,13 @@ services:
     entrypoint: ["/bin/sh", "-c", "while true; do python3 -u cleanup_users.py; sleep 86400; done"]
     restart: unless-stopped
 
+  rollup-api-calls:
+    image: ghcr.io/malshare/rollup-api-calls
+    env_file:
+      - frontend.env
+    # Run once daily: execute script, sleep 24h, repeat
+    entrypoint: ["/bin/sh", "-c", "while true; do python3 -u rollup_api_calls.py; sleep 86400; done"]
+    restart: unless-stopped
+
 volumes:
   daily_exports:
