@@ -56,5 +56,13 @@ services:
     entrypoint: ["/bin/sh", "-c", "while true; do python3 -u rollup_api_calls.py; sleep 86400; done"]
     restart: unless-stopped
 
+  refresh-stats:
+    image: ghcr.io/malshare/refresh-stats
+    env_file:
+      - frontend.env
+    # Run once per hour: precompute expensive sample stats
+    entrypoint: ["/bin/sh", "-c", "while true; do python3 -u refresh_stats.py; sleep 3600; done"]
+    restart: unless-stopped
+
 volumes:
   daily_exports:
