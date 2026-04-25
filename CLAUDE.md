@@ -19,7 +19,7 @@ Upstream push (Frontend or Offline)
 
 ## Key Files
 
-- `src/docker-compose.yml` — Production service definitions (frontend, cloudflared tunnel, upload-handler, url-task-handler, generate-daily)
+- `src/docker-compose.yml` — Production service definitions (frontend, cloudflared tunnel, upload-handler, url-task-handler, generate-daily, rollup-api-calls, refresh-stats, cleanup-users)
 - `src/frontend.env` — Environment variables for the frontend container (NOT committed with real secrets)
 - `.github/workflows/deploy.yml` — Deployment workflow triggered by push or upstream dispatch
 
@@ -117,6 +117,9 @@ Python backend for MalShare — handles work PHP can't do efficiently.
 - **`upload_handler.py`** — Long-running daemon that polls for pending samples, downloads from S3, detects file type (libmagic), computes ssdeep hash, and updates DB
 - **`url_task_handler.py`** — Long-running daemon that polls `tbl_url_download_tasks` for user-submitted URLs, downloads them via Tor (SOCKS5 proxy bundled in container), ingests as samples via `submit_buffer()`. Tor bandwidth is capped at 1MB/s (burst 2MB/s) in the entrypoint to avoid saturating the server link during consensus downloads
 - **`generate_daily.py`** — Generates daily hash export files (MD5, SHA1, SHA256, combined) for each day since the first sample. Also copies the latest day's files as `malshare.current.*` to the output root
+- **`rollup_api_calls.py`** — Two-tier aggregation of `tbl_api_calls` into `tbl_api_calls_daily` (30+ days → per-user/endpoint/day; 365+ days → endpoint-only). Run daily
+- **`refresh_stats.py`** — Precomputes expensive sample statistics (COUNT, GROUP BY year, GROUP BY ftype, all-time API calls) into `tbl_stats_cache`. Frontend reads from this table instead of running full table scans. Run hourly
+- **`cleanup_users.py`** — Clears IP address history for users inactive 90+ days. Run daily
 
 ## Key Files
 
@@ -126,7 +129,10 @@ Python backend for MalShare — handles work PHP can't do efficiently.
 - `docker/Dockerfile.base` — Shared base image (`ghcr.io/malshare/pymalshare-base`) with python:3.13, ssdeep, libmagic, pymysql, boto3. All pymalshare services except generate-daily inherit from this
 - `docker/Dockerfile.upload_handler` — Upload handler, extends base
 - `docker/Dockerfile.url_task_handler` — URL task handler, extends base + adds tor and requests[socks]
-- `docker/Docker.generate_daily` — Daily export (independent, python:3.13 + mariadb client)
+- `docker/Docker.generate_daily` — Daily export (independent, python:3.14 + mariadb client)
+- `docker/Dockerfile.rollup_api_calls` — API call rollup (python:3.14 + mariadb)
+- `docker/Dockerfile.refresh_stats` — Stats cache refresh (python:3.14 + mariadb)
+- `docker/Dockerfile.cleanup_users` — User IP cleanup (python:3.14 + mariadb)
 
 ## Environment Variables
 
@@ -150,7 +156,7 @@ All repos follow the same deployment pattern:
 3. **Conf** is the downstream deployer — receives dispatch events and deploys via SSH
 4. All container images are private in GHCR; malshare-bot authenticates to pull them. New GHCR packages created by CI inherit org-level permissions automatically — no manual adjustment needed
 5. To switch between Frontend and Offline on the server, change the `image:` in `src/docker-compose.yml`
-6. pymalshare containers (generate-daily, upload-handler, url-task-handler) run alongside the frontend as additional services
+6. pymalshare containers (upload-handler, url-task-handler, generate-daily, rollup-api-calls, refresh-stats, cleanup-users) run alongside the frontend as additional services
 
 ---
 
