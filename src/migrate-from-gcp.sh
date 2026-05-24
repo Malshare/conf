@@ -26,14 +26,9 @@ GCP_USER="${GCP_USER:-root}"
 GCP_DB="${GCP_DB:-malshare_db}"
 COMPOSE_SERVICE="${COMPOSE_SERVICE:-mysql}"
 
-if [[ -z "${GCP_PASS:-}" ]]; then
-  read -r -s -p "GCP MySQL password for ${GCP_USER}@${GCP_HOST}: " GCP_PASS
-  echo
-fi
-
-# Pull the local root password from frontend.env. We parse as literal
-# KEY=VALUE (not via `. ./frontend.env`) so passwords with $, `, #, quotes,
-# etc. don't get reinterpreted by bash.
+# Pull values from frontend.env. We parse as literal KEY=VALUE (not via
+# `. ./frontend.env`) so passwords with $, `, #, quotes, etc. don't get
+# reinterpreted by bash.
 env_value() {
   local key="$1"
   local file="${2:-frontend.env}"
@@ -62,6 +57,22 @@ if [[ -z "${MYSQL_ROOT_PASSWORD}" ]]; then
   exit 1
 fi
 
+# Source password: env var wins, then frontend.env (MALSHARE_DB_PASS or the
+# legacy MYSQL_DB_PASS — both are kept in sync for app compatibility), then
+# interactive prompt as a last resort.
+if [[ -z "${GCP_PASS:-}" ]]; then
+  GCP_PASS="$(env_value MALSHARE_DB_PASS || true)"
+fi
+if [[ -z "${GCP_PASS:-}" ]]; then
+  GCP_PASS="$(env_value MYSQL_DB_PASS || true)"
+fi
+if [[ -z "${GCP_PASS:-}" ]]; then
+  read -r -s -p "GCP MySQL password for ${GCP_USER}@${GCP_HOST}: " GCP_PASS
+  echo
+else
+  echo "==> Using GCP password from frontend.env"
+fi
+
 echo "==> Verifying local mysql container is healthy"
 if ! docker compose ps --status running "${COMPOSE_SERVICE}" | grep -q "${COMPOSE_SERVICE}"; then
   echo "ERROR: '${COMPOSE_SERVICE}' service is not running. Start it first: docker compose up -d ${COMPOSE_SERVICE}" >&2
@@ -79,9 +90,16 @@ if [[ "${TABLE_COUNT}" -ne 0 ]]; then
   exit 1
 fi
 
+# All mysql/mysqldump calls run inside the local mysql:8.0.31 container so the
+# host doesn't need a mysql client installed and the client version always
+# matches the source.
+GCP_MYSQL=(docker compose exec -T -e "MYSQL_PWD=${GCP_PASS}" "${COMPOSE_SERVICE}"
+           mysql --host="${GCP_HOST}" --user="${GCP_USER}")
+GCP_MYSQLDUMP=(docker compose exec -T -e "MYSQL_PWD=${GCP_PASS}" "${COMPOSE_SERVICE}"
+               mysqldump --host="${GCP_HOST}" --user="${GCP_USER}")
+
 echo "==> Source database overview (${GCP_HOST}/${GCP_DB})"
-MYSQL_PWD="${GCP_PASS}" mysql \
-    --host="${GCP_HOST}" --user="${GCP_USER}" -B -e "
+"${GCP_MYSQL[@]}" -B -e "
       SELECT
         table_name AS 'table',
         table_rows AS 'rows',
@@ -94,10 +112,10 @@ MYSQL_PWD="${GCP_PASS}" mysql \
 # Estimated total bytes for the `pv -s` progress bar. mysqldump output is
 # typically 1.5-2x the raw data_length (dumps include SQL syntax + hex-encoded
 # blobs), so we scale up. Worst case pv shows >100% near the end.
-EST_BYTES=$(MYSQL_PWD="${GCP_PASS}" mysql \
-    --host="${GCP_HOST}" --user="${GCP_USER}" -N -B -e \
+EST_BYTES=$("${GCP_MYSQL[@]}" -N -B -e \
     "SELECT CAST(SUM(data_length + index_length) * 1.8 AS UNSIGNED)
-     FROM information_schema.tables WHERE table_schema='${GCP_DB}';")
+     FROM information_schema.tables WHERE table_schema='${GCP_DB}';" \
+  | tr -d '\r')
 
 if command -v pv >/dev/null 2>&1; then
   PROGRESS=(pv --progress --timer --rate --average-rate --bytes --size "${EST_BYTES:-0}")
@@ -122,9 +140,7 @@ echo
 #   --no-tablespaces      avoid PROCESS privilege requirement on CloudSQL
 #   --column-statistics=0 disable mysqldump 8.x feature CloudSQL rejects
 START=$(date +%s)
-MYSQL_PWD="${GCP_PASS}" mysqldump \
-    --host="${GCP_HOST}" \
-    --user="${GCP_USER}" \
+"${GCP_MYSQLDUMP[@]}" \
     --verbose \
     --single-transaction \
     --quick \
