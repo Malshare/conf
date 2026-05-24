@@ -56,8 +56,41 @@ if [[ "${TABLE_COUNT}" -ne 0 ]]; then
   exit 1
 fi
 
+echo "==> Source database overview (${GCP_HOST}/${GCP_DB})"
+MYSQL_PWD="${GCP_PASS}" mysql \
+    --host="${GCP_HOST}" --user="${GCP_USER}" -B -e "
+      SELECT
+        table_name AS 'table',
+        table_rows AS 'rows',
+        ROUND((data_length + index_length)/1024/1024, 1) AS 'size_mb'
+      FROM information_schema.tables
+      WHERE table_schema='${GCP_DB}'
+      ORDER BY (data_length + index_length) DESC;
+    "
+
+# Estimated total bytes for the `pv -s` progress bar. mysqldump output is
+# typically 1.5-2x the raw data_length (dumps include SQL syntax + hex-encoded
+# blobs), so we scale up. Worst case pv shows >100% near the end.
+EST_BYTES=$(MYSQL_PWD="${GCP_PASS}" mysql \
+    --host="${GCP_HOST}" --user="${GCP_USER}" -N -B -e \
+    "SELECT CAST(SUM(data_length + index_length) * 1.8 AS UNSIGNED)
+     FROM information_schema.tables WHERE table_schema='${GCP_DB}';")
+
+if command -v pv >/dev/null 2>&1; then
+  PROGRESS=(pv --progress --timer --rate --average-rate --bytes --size "${EST_BYTES:-0}")
+  echo "==> Progress bar enabled (pv detected)"
+else
+  PROGRESS=(cat)
+  echo "==> 'pv' not installed; will only show per-table progress. Install with: apt-get install -y pv"
+fi
+
 echo "==> Dumping ${GCP_DB} from ${GCP_HOST} and streaming into ${COMPOSE_SERVICE}"
+echo "    Estimated dump size: ~$((${EST_BYTES:-0} / 1024 / 1024)) MB"
+echo "    Per-table progress will print to stderr below."
+echo
+
 # Flags chosen for CloudSQL compatibility + InnoDB consistency:
+#   --verbose             emit "-- Retrieving table structure for X" to stderr
 #   --single-transaction  consistent snapshot without table locks (InnoDB only)
 #   --quick               stream row-by-row, don't buffer huge tables
 #   --routines/--triggers/--events  preserve stored procedures + DB-side automation
@@ -65,9 +98,11 @@ echo "==> Dumping ${GCP_DB} from ${GCP_HOST} and streaming into ${COMPOSE_SERVIC
 #   --set-gtid-purged=OFF  CloudSQL doesn't grant the privileges to import GTID state
 #   --no-tablespaces      avoid PROCESS privilege requirement on CloudSQL
 #   --column-statistics=0 disable mysqldump 8.x feature CloudSQL rejects
+START=$(date +%s)
 MYSQL_PWD="${GCP_PASS}" mysqldump \
     --host="${GCP_HOST}" \
     --user="${GCP_USER}" \
+    --verbose \
     --single-transaction \
     --quick \
     --routines \
@@ -78,8 +113,12 @@ MYSQL_PWD="${GCP_PASS}" mysqldump \
     --no-tablespaces \
     --column-statistics=0 \
     --databases "${GCP_DB}" \
+  | "${PROGRESS[@]}" \
   | docker compose exec -T "${COMPOSE_SERVICE}" \
       mysql -uroot -p"${MYSQL_ROOT_PASSWORD}"
+ELAPSED=$(( $(date +%s) - START ))
+echo
+echo "==> Dump+import finished in ${ELAPSED}s"
 
 echo "==> Import finished. Reporting destination row counts:"
 docker compose exec -T "${COMPOSE_SERVICE}" \
