@@ -1,0 +1,18 @@
+# Offline-mode override.
+#
+# Apply alongside docker-compose.yml to swap the frontend container for the
+# static maintenance page from ghcr.io/malshare/offline:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.offline.yml up -d frontend cloudflared
+#
+# (Or just run `make offline`.)
+#
+# Only the frontend image changes — the cloudflared tunnel keeps pointing at
+# http://frontend:80 so the public hostname is unaffected. The DB and worker
+# services are left untouched; stop them separately if you want a true freeze.
+
+services:
+  frontend:
+    image: ghcr.io/malshare/offline
+    env_file: !reset []
+    depends_on: !reset []

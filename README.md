@@ -61,6 +61,27 @@ Upstream repos that currently use this token:
 - `Malshare/frontend`
 - `Malshare/pymalshare`
 
+# Operator Commands
+
+All day-to-day operations on the Hetzner host go through the `Makefile` in `/root/conf-src/` (the deployed copy of `src/`). Run `make` with no arguments to print the target list. Common ones:
+
+```bash
+make up                # docker compose up -d --pull always
+make down              # stop the stack
+make ps                # docker compose ps
+make logs              # tail all logs (or: make logs SERVICE=frontend)
+make restart           # restart everything (or: make restart SERVICE=upload-handler)
+
+make offline           # serve ghcr.io/malshare/offline as the frontend
+make online            # restore the normal frontend image
+
+make mysql             # root shell in the local mysql container
+make mysql-backup      # gzipped dump into ./backups/
+make migrate-from-gcp  # one-shot GCP CloudSQL -> local mysql bootstrap
+
+make validate          # docker compose config check (base + offline overlay)
+```
+
 # Frontend Tunnel
 
 The frontend is exposed through a Cloudflare Tunnel instead of binding port `80` on the host.
@@ -70,10 +91,37 @@ The frontend is exposed through a Cloudflare Tunnel instead of binding port `80`
 1. Copy `src/frontend.env.example` to `src/frontend.env` and fill in the frontend secrets.
 2. In Cloudflare Zero Trust, create a tunnel for this host and copy its token into `TUNNEL_TOKEN` in `src/frontend.env`.
 3. In the tunnel's **Public Hostname** settings, point the hostname at `http://frontend:80`.
-4. Start the stack from `src/` with Docker Compose:
-
-```bash
-docker compose up -d
-```
+4. Start the stack from `src/` with `make up` (equivalent to `docker compose up -d --pull always`).
 
 This Compose stack keeps the `frontend` container private on the Docker network and lets `cloudflared` publish it securely through Cloudflare.
+
+## Maintenance mode
+
+`make offline` applies `docker-compose.offline.yml` on top of the base config, swapping `frontend.image` to `ghcr.io/malshare/offline`. The Cloudflare tunnel keeps pointing at `http://frontend:80`, so the public hostname stays up but serves the static "we're offline" page from the [Malshare/offline](https://github.com/Malshare/offline) repo. The DB and worker services are left running — stop them separately if you want a true freeze. `make online` swaps the regular frontend image back in.
+
+# Database
+
+MySQL 8.0.31 runs inside the compose stack as the `mysql` service and is reachable from the other containers as host `mysql:3306`. The data directory is bind-mounted to `/storage/malshare/mysql` on the host, so the database survives container/image churn.
+
+## First-time setup on the host
+
+```bash
+mkdir -p /storage/malshare/mysql
+chown -R 999:999 /storage/malshare/mysql   # the mysql:8.0.31 image runs as uid/gid 999
+```
+
+The mysql container reads `MYSQL_ROOT_PASSWORD`, `MYSQL_USER`, `MYSQL_PASSWORD`, and `MYSQL_DATABASE` from `frontend.env` on first boot. These must match the `MALSHARE_DB_*` values the rest of the stack uses to connect. See `src/frontend.env.example`.
+
+## Migrating from the old GCP CloudSQL instance
+
+The historical primary lived at `34.44.192.195` (GCP CloudSQL, project `malshare`, instance `malsharedb`, MySQL 8.0.31). `src/migrate-from-gcp.sh` performs a one-shot `mysqldump | mysql` over the public IP. Run it on the Hetzner host after the `mysql` service is up and healthy, with the upload-handler and url-task-handler stopped so no writes race the dump:
+
+```bash
+cd /root/conf-src
+docker compose up -d mysql
+docker compose stop upload-handler url-task-handler
+./migrate-from-gcp.sh                       # prompts for the GCP root password
+docker compose up -d                        # bring the rest of the stack back
+```
+
+Compare the per-table row counts the script prints against the source before declaring the cutover done.

@@ -19,9 +19,30 @@ Upstream push (Frontend or Offline)
 
 ## Key Files
 
-- `src/docker-compose.yml` — Production service definitions (frontend, cloudflared tunnel, upload-handler, url-task-handler, generate-daily, rollup-api-calls, refresh-stats, cleanup-users)
-- `src/frontend.env` — Environment variables for the frontend container (NOT committed with real secrets)
+- `src/docker-compose.yml` — Production service definitions (mysql, frontend, cloudflared tunnel, upload-handler, url-task-handler, generate-daily, rollup-api-calls, refresh-stats, cleanup-users)
+- `src/docker-compose.offline.yml` — Override file that swaps `frontend.image` to `ghcr.io/malshare/offline` for maintenance windows
+- `src/Makefile` — Operator entry point on the Hetzner host; `make` with no args prints the target list. See "Operator commands" below
+- `src/frontend.env` — Environment variables for all containers (NOT committed with real secrets). Also consumed by the `mysql` service on first boot for `MYSQL_ROOT_PASSWORD` / `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DATABASE`
+- `src/migrate-from-gcp.sh` — One-shot helper run on the Hetzner host that mysqldumps `malshare_db` from the GCP CloudSQL instance and streams it into the local `mysql` container
 - `.github/workflows/deploy.yml` — Deployment workflow triggered by push or upstream dispatch
+
+## Operator commands
+
+The `Makefile` in `src/` (deployed to `/root/conf-src/Makefile`) is the canonical entry point on the server. Run `make` with no arguments for the full list. Most useful:
+
+| Target | What it does |
+| --- | --- |
+| `make up` / `make deploy` | `docker compose up -d --pull always` (matches the CI deploy step) |
+| `make down` | Stop the stack (volumes preserved) |
+| `make restart [SERVICE=name]` | Restart everything or one service |
+| `make offline` | Apply `docker-compose.offline.yml` and bring up frontend+cloudflared with the maintenance image |
+| `make online` | Restore the normal frontend image (run after `make offline`) |
+| `make logs [SERVICE=name]` | Tail logs |
+| `make ps` | `docker compose ps` |
+| `make mysql` | Root mysql shell against the local DB |
+| `make mysql-backup` | gzipped mysqldump to `./backups/malshare_db-<timestamp>.sql.gz` |
+| `make migrate-from-gcp` | Runs the GCP -> local bootstrap script |
+| `make validate` | `docker compose config --quiet` on both the base and offline-overlay configs |
 
 ## GitHub Secrets (org-level)
 
@@ -30,11 +51,57 @@ Upstream push (Frontend or Offline)
 
 ## Server Layout
 
-On the production server, `src/*` is copied to `/root/conf-src/`. The `frontend.env` file must exist there alongside `docker-compose.yml`.
+On the production server (Hetzner, `46.225.99.0`), `src/*` is copied to `/root/conf-src/`. The `frontend.env` file must exist there alongside `docker-compose.yml`.
+
+### Persistent storage
+
+The MySQL data directory is bind-mounted to `/storage/malshare/mysql` on the host. This path **must** exist and be empty before the first `docker compose up -d mysql`. The `mysql` container runs as UID/GID 999 (the official image's `mysql` user); ensure the directory is owned by `999:999` or just `root:root` with `chmod 700`.
+
+```bash
+mkdir -p /storage/malshare/mysql
+chown -R 999:999 /storage/malshare/mysql
+```
 
 ## Shared Volumes
 
-- `daily_exports` — Written by `generate-daily`, mounted read-only into `frontend` at `/var/www/html/daily/`. Serves browsable directory listings of daily hash exports at the `/daily/` URL path.
+- `daily_exports` (named volume) — Written by `generate-daily`, mounted read-only into `frontend` at `/var/www/html/daily/`. Serves browsable directory listings of daily hash exports at the `/daily/` URL path.
+- `/storage/malshare/mysql` (bind mount) — MySQL 8.0.31 data directory.
+
+## Database
+
+Production MySQL runs in-container (`mysql:8.0.31`, matching the prior GCP CloudSQL version). Frontend and pymalshare services reach it as host `mysql` over the compose network — port 3306 is **not** exposed on the host.
+
+The historical source was a GCP CloudSQL instance at `34.44.192.195` (project `malshare`, instance `malsharedb`). It was migrated onto the Hetzner host using `src/migrate-from-gcp.sh`, which mysqldumps the schema + data over the public IP and streams it into the local container.
+
+### Initial migration runbook
+
+```bash
+# On the Hetzner host:
+mkdir -p /storage/malshare/mysql
+chown -R 999:999 /storage/malshare/mysql
+
+cd /root/conf-src
+# Populate frontend.env, including MYSQL_ROOT_PASSWORD and matching
+# MALSHARE_DB_* / MYSQL_* credentials.
+
+# Park the public site on the maintenance page for the duration of the cutover:
+make offline
+
+# Bring up the local mysql service and wait for healthcheck:
+docker compose up -d mysql
+make ps
+
+# Stop the writers so the dump is consistent:
+docker compose stop upload-handler url-task-handler
+
+# Run the migration (will prompt for the GCP root password):
+make migrate-from-gcp
+
+# Spot-check row counts in the script's output against the GCP source,
+# then flip the rest of the stack onto the local DB:
+make online
+make up
+```
 
 ---
 
