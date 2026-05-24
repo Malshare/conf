@@ -31,13 +31,36 @@ if [[ -z "${GCP_PASS:-}" ]]; then
   echo
 fi
 
-# Pull the local root password from frontend.env so we don't need it twice.
-if [[ -f frontend.env ]]; then
-  # shellcheck disable=SC1091
-  set -a; . ./frontend.env; set +a
-fi
-: "${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set in frontend.env}"
+# Pull the local root password from frontend.env. We parse as literal
+# KEY=VALUE (not via `. ./frontend.env`) so passwords with $, `, #, quotes,
+# etc. don't get reinterpreted by bash.
+env_value() {
+  local key="$1"
+  local file="${2:-frontend.env}"
+  [[ -f "$file" ]] || return 1
+  # Strip the matching `KEY=` prefix; preserve everything after (incl. = signs).
+  # Ignores commented-out lines and trims a single layer of surrounding quotes
+  # to match docker compose's env_file parser.
+  local line
+  line=$(grep -E "^${key}=" "$file" | tail -n 1) || return 1
+  [[ -n "$line" ]] || return 1
+  local val="${line#${key}=}"
+  # Strip matching surrounding single or double quotes, if any.
+  if [[ "$val" =~ ^\".*\"$ ]]; then val="${val:1:-1}"; fi
+  if [[ "$val" =~ ^\'.*\'$ ]]; then val="${val:1:-1}"; fi
+  printf '%s' "$val"
+}
+
+MYSQL_ROOT_PASSWORD="$(env_value MYSQL_ROOT_PASSWORD || true)"
+MALSHARE_DB_DATABASE="$(env_value MALSHARE_DB_DATABASE || true)"
 : "${MALSHARE_DB_DATABASE:=malshare_db}"
+
+if [[ -z "${MYSQL_ROOT_PASSWORD}" ]]; then
+  echo "ERROR: MYSQL_ROOT_PASSWORD is not set in frontend.env." >&2
+  echo "       Add a line like:  MYSQL_ROOT_PASSWORD=<your-password>" >&2
+  echo "       (no surrounding quotes needed; same string the mysql container was initialised with)" >&2
+  exit 1
+fi
 
 echo "==> Verifying local mysql container is healthy"
 if ! docker compose ps --status running "${COMPOSE_SERVICE}" | grep -q "${COMPOSE_SERVICE}"; then

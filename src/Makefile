@@ -81,21 +81,31 @@ shell: _require_env ## Open a shell in SERVICE=name (defaults to frontend).
 
 ##@ Database
 
+# Read a literal KEY=VALUE from frontend.env. Used to avoid `set -a; . file`,
+# which breaks when values contain $, `, #, quotes, or whitespace.
+define ENV_GET
+$$(awk -F= -v k="$(1)" 'BEGIN{IGNORECASE=0} $$1==k {sub(/^[^=]*=/,""); print; exit}' $(ENV_FILE))
+endef
+
 .PHONY: mysql
 mysql: _require_env ## Open a root mysql shell against the local DB.
-	@set -a; . ./$(ENV_FILE); set +a; \
-		$(DC) exec mysql mysql -uroot -p"$$MYSQL_ROOT_PASSWORD" "$$MALSHARE_DB_DATABASE"
+	@root_pw='$(call ENV_GET,MYSQL_ROOT_PASSWORD)'; \
+	 db='$(call ENV_GET,MALSHARE_DB_DATABASE)'; db="$${db:-malshare_db}"; \
+	 [ -n "$$root_pw" ] || { echo "ERROR: MYSQL_ROOT_PASSWORD not set in $(ENV_FILE)" >&2; exit 1; }; \
+	 $(DC) exec mysql mysql -uroot -p"$$root_pw" "$$db"
 
 .PHONY: mysql-backup
 mysql-backup: _require_env ## Dump the local DB to ./backups/malshare_db-<timestamp>.sql.gz.
 	@mkdir -p backups
-	@set -a; . ./$(ENV_FILE); set +a; \
-		out="backups/malshare_db-$$(date -u +%Y%m%dT%H%M%SZ).sql.gz"; \
-		$(DC) exec -T mysql \
-			mysqldump -uroot -p"$$MYSQL_ROOT_PASSWORD" \
-				--single-transaction --quick --routines --triggers --events --hex-blob \
-				"$$MALSHARE_DB_DATABASE" | gzip > "$$out"; \
-		echo "Wrote $$out"
+	@root_pw='$(call ENV_GET,MYSQL_ROOT_PASSWORD)'; \
+	 db='$(call ENV_GET,MALSHARE_DB_DATABASE)'; db="$${db:-malshare_db}"; \
+	 [ -n "$$root_pw" ] || { echo "ERROR: MYSQL_ROOT_PASSWORD not set in $(ENV_FILE)" >&2; exit 1; }; \
+	 out="backups/malshare_db-$$(date -u +%Y%m%dT%H%M%SZ).sql.gz"; \
+	 $(DC) exec -T mysql \
+	   mysqldump -uroot -p"$$root_pw" \
+	     --single-transaction --quick --routines --triggers --events --hex-blob \
+	     "$$db" | gzip > "$$out"; \
+	 echo "Wrote $$out"
 
 .PHONY: migrate-from-gcp
 migrate-from-gcp: _require_env ## Run the one-shot GCP -> local mysqldump bootstrap.
