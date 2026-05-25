@@ -77,7 +77,6 @@ make online            # restore the normal frontend image
 
 make mysql             # root shell in the local mysql container
 make mysql-backup      # gzipped dump into ./backups/
-make migrate-from-gcp  # one-shot GCP CloudSQL -> local mysql bootstrap
 
 make validate          # docker compose config check (base + offline overlay)
 ```
@@ -110,18 +109,10 @@ mkdir -p /storage/malshare/mysql
 chown -R 999:999 /storage/malshare/mysql   # the mysql:8.0.31 image runs as uid/gid 999
 ```
 
-The mysql container reads `MYSQL_ROOT_PASSWORD`, `MYSQL_USER`, `MYSQL_PASSWORD`, and `MYSQL_DATABASE` from `frontend.env` on first boot. These must match the `MALSHARE_DB_*` values the rest of the stack uses to connect. See `src/frontend.env.example`.
+The app connects as **root** (no separate application user). `MYSQL_ROOT_PASSWORD` in `frontend.env` is what the official mysql image uses on first init; after that the on-disk DB owns the credential. The matching `MALSHARE_DB_PASS` / `MYSQL_DB_PASS` keys must equal the same string. The DB connection keys are duplicated as both `MALSHARE_DB_*` and `MYSQL_DB_*` for app compatibility — keep both sets in sync. See `src/frontend.env.example`.
 
-## Migrating from the old GCP CloudSQL instance
+## History
 
-The historical primary lived at `34.44.192.195` (GCP CloudSQL, project `malshare`, instance `malsharedb`, MySQL 8.0.31). `src/migrate-from-gcp.sh` performs a one-shot `mysqldump | mysql` over the public IP. Run it on the Hetzner host after the `mysql` service is up and healthy, with the upload-handler and url-task-handler stopped so no writes race the dump:
+The database was migrated from a GCP CloudSQL instance (`34.44.192.195`, project `malshare`, instance `malsharedb`, MySQL 8.0.31) onto Hetzner on 2026-05-25. The GCP instance is preserved as a rollback option (deletion-protected; VM can be stopped via `gcloud sql instances patch malsharedb --activation-policy=NEVER` to drop cost without losing data).
 
-```bash
-cd /root/conf-src
-docker compose up -d mysql
-docker compose stop upload-handler url-task-handler
-./migrate-from-gcp.sh                       # prompts for the GCP root password
-docker compose up -d                        # bring the rest of the stack back
-```
-
-Compare the per-table row counts the script prints against the source before declaring the cutover done.
+When verifying any future bulk import, never trust `information_schema.tables.table_rows` — it's an InnoDB estimate that can read 0 for a freshly populated table. Use `SELECT COUNT(*)`, and follow imports with `ANALYZE TABLE` so the query planner gets accurate cardinality.

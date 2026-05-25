@@ -22,8 +22,7 @@ Upstream push (Frontend or Offline)
 - `src/docker-compose.yml` — Production service definitions (mysql, frontend, cloudflared tunnel, upload-handler, url-task-handler, generate-daily, rollup-api-calls, refresh-stats, cleanup-users)
 - `src/docker-compose.offline.yml` — Override file that swaps `frontend.image` to `ghcr.io/malshare/offline` for maintenance windows
 - `src/Makefile` — Operator entry point on the Hetzner host; `make` with no args prints the target list. See "Operator commands" below
-- `src/frontend.env` — Environment variables for all containers (NOT committed with real secrets). Also consumed by the `mysql` service on first boot for `MYSQL_ROOT_PASSWORD` / `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DATABASE`
-- `src/migrate-from-gcp.sh` — One-shot helper run on the Hetzner host that mysqldumps `malshare_db` from the GCP CloudSQL instance and streams it into the local `mysql` container
+- `src/frontend.env` — Environment variables for all containers (NOT committed with real secrets). Also consumed by the `mysql` service on first boot for `MYSQL_ROOT_PASSWORD`. The DB connection keys are duplicated as both `MALSHARE_DB_*` and `MYSQL_DB_*` for app compatibility (different parts of the codebase read different names); keep the values in sync
 - `.github/workflows/deploy.yml` — Deployment workflow triggered by push or upstream dispatch
 
 ## Operator commands
@@ -41,7 +40,6 @@ The `Makefile` in `src/` (deployed to `/root/conf-src/Makefile`) is the canonica
 | `make ps` | `docker compose ps` |
 | `make mysql` | Root mysql shell against the local DB |
 | `make mysql-backup` | gzipped mysqldump to `./backups/malshare_db-<timestamp>.sql.gz` |
-| `make migrate-from-gcp` | Runs the GCP -> local bootstrap script |
 | `make validate` | `docker compose config --quiet` on both the base and offline-overlay configs |
 
 ## GitHub Secrets (org-level)
@@ -69,39 +67,15 @@ chown -R 999:999 /storage/malshare/mysql
 
 ## Database
 
-Production MySQL runs in-container (`mysql:8.0.31`, matching the prior GCP CloudSQL version). Frontend and pymalshare services reach it as host `mysql` over the compose network — port 3306 is **not** exposed on the host.
+Production MySQL runs in-container as the `mysql` service (`mysql:8.0.31`) with the data directory bind-mounted to `/storage/malshare/mysql`. Frontend and pymalshare services reach it as host `mysql:3306` over the compose network — port 3306 is **not** exposed on the host.
 
-The historical source was a GCP CloudSQL instance at `34.44.192.195` (project `malshare`, instance `malsharedb`). It was migrated onto the Hetzner host using `src/migrate-from-gcp.sh`, which mysqldumps the schema + data over the public IP and streams it into the local container.
+The app connects as **root** (no separate application user). `MYSQL_ROOT_PASSWORD` in `frontend.env` is what the official mysql image uses on first init; after that, the on-disk DB owns the credential and the env var is only re-checked by the healthcheck. The matching `MALSHARE_DB_PASS` / `MYSQL_DB_PASS` keys must equal the same value or the app loses access.
 
-### Initial migration runbook
+The DB was migrated onto Hetzner from a GCP CloudSQL instance (`34.44.192.195`, project `malshare`, instance `malsharedb`, MySQL 8.0.31) on 2026-05-25. The GCP instance is kept around as a rollback option (deletion-protected, VM may be stopped via `gcloud sql instances patch malsharedb --activation-policy=NEVER`).
 
-```bash
-# On the Hetzner host:
-mkdir -p /storage/malshare/mysql
-chown -R 999:999 /storage/malshare/mysql
+### Verifying row counts against an InnoDB DB
 
-cd /root/conf-src
-# Populate frontend.env, including MYSQL_ROOT_PASSWORD and matching
-# MALSHARE_DB_* / MYSQL_* credentials.
-
-# Park the public site on the maintenance page for the duration of the cutover:
-make offline
-
-# Bring up the local mysql service and wait for healthcheck:
-docker compose up -d mysql
-make ps
-
-# Stop the writers so the dump is consistent:
-docker compose stop upload-handler url-task-handler
-
-# Run the migration (will prompt for the GCP root password):
-make migrate-from-gcp
-
-# Spot-check row counts in the script's output against the GCP source,
-# then flip the rest of the stack onto the local DB:
-make online
-make up
-```
+`information_schema.tables.table_rows` is an **estimate** for InnoDB, not a real count. It can read as `0` for a freshly imported, populated table until `ANALYZE TABLE` runs. Never use it for migration verification — always use `SELECT COUNT(*)`. This bit us once during the GCP cutover when `tbl_users` showed estimated rows = 0 immediately after a successful import; real `COUNT(*)` returned 63,021. After any bulk import, run `ANALYZE TABLE` on the touched tables so the query planner has accurate cardinality.
 
 ---
 

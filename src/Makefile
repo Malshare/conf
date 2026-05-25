@@ -107,10 +107,6 @@ mysql-backup: _require_env ## Dump the local DB to ./backups/malshare_db-<timest
 	     "$$db" | gzip > "$$out"; \
 	 echo "Wrote $$out"
 
-.PHONY: migrate-from-gcp
-migrate-from-gcp: _require_env ## Run the one-shot GCP -> local mysqldump bootstrap.
-	./migrate-from-gcp.sh
-
 # --- internals -------------------------------------------------------------
 
 .PHONY: _require_env
