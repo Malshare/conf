@@ -103,5 +103,19 @@ services:
     entrypoint: ["/bin/sh", "-c", "while true; do python3 -u refresh_stats.py; sleep 3600; done"]
     restart: unless-stopped
 
+  # One-time tool, NOT started by `make up` (profile gates it). Backfills
+  # tbl_samples.size from Wasabi object sizes. Run with:
+  #   docker compose run --rm backfill-sizes
+  # Idempotent/resumable (UPDATE ... WHERE size IS NULL); safe to re-run.
+  backfill-sizes:
+    image: ghcr.io/malshare/backfill-sizes
+    profiles: ["tools"]
+    env_file:
+      - frontend.env
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: "no"
+
 volumes:
   daily_exports:

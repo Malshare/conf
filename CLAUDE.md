@@ -19,7 +19,7 @@ Upstream push (Frontend or Offline)
 
 ## Key Files
 
-- `src/docker-compose.yml` — Production service definitions (mysql, frontend, cloudflared tunnel, upload-handler, url-task-handler, generate-daily, rollup-api-calls, refresh-stats, cleanup-users)
+- `src/docker-compose.yml` — Production service definitions (mysql, frontend, cloudflared tunnel, upload-handler, url-task-handler, generate-daily, rollup-api-calls, refresh-stats, cleanup-users; plus the `tools`-profile one-off `backfill-sizes`)
 - `src/docker-compose.offline.yml` — Override file that swaps `frontend.image` to `ghcr.io/malshare/offline` for maintenance windows
 - `src/Makefile` — Operator entry point on the Hetzner host; `make` with no args prints the target list. See "Operator commands" below
 - `src/frontend.env` — Environment variables for all containers (NOT committed with real secrets). Also consumed by the `mysql` service on first boot for `MYSQL_ROOT_PASSWORD`. The DB connection keys are duplicated as both `MALSHARE_DB_*` and `MYSQL_DB_*` for app compatibility (different parts of the codebase read different names); keep the values in sync
@@ -161,6 +161,7 @@ Python backend for MalShare — handles work PHP can't do efficiently.
 - **`rollup_api_calls.py`** — Two-tier aggregation of `tbl_api_calls` into `tbl_api_calls_daily` (30+ days → per-user/endpoint/day; 365+ days → endpoint-only). Run daily
 - **`refresh_stats.py`** — Precomputes expensive sample statistics (COUNT, GROUP BY year, GROUP BY ftype, all-time API calls) into `tbl_stats_cache`. Frontend reads from this table instead of running full table scans. Run hourly
 - **`cleanup_users.py`** — Clears IP address history for users inactive 90+ days. Run daily
+- **`backfill-sizes`** — One-time tool service (image `ghcr.io/malshare/backfill-sizes`), gated behind the `tools` compose profile so `make up` never starts it. Backfills `tbl_samples.size` from Wasabi object sizes. Run on demand: `cd /root/conf-src && docker compose run --rm backfill-sizes`. Idempotent/resumable (`UPDATE ... WHERE size IS NULL`); safe to re-run. After it completes, the next hourly `refresh-stats` populates the `total_bytes` stats-cache key
 
 ## Key Files
 
