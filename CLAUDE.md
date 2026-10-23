@@ -85,7 +85,7 @@ PHP web application — the main malshare.com site for sharing and searching mal
 
 ## Tech Stack
 
-- PHP 8.4 on Apache
+- PHP 8.5 on Apache
 - MySQL 8
 - Wasabi S3-compatible storage for sample binaries
 - Bootstrap CSS, jQuery, D3.js
@@ -99,7 +99,7 @@ PHP web application — the main malshare.com site for sharing and searching mal
 - `html/server_registration.php` — User registration, email (Mailgun)
 - `html/api.php` — REST API endpoints (getlist, getsources, dailysum, etc.)
 - `html/sample.php` — Sample detail view
-- `Dockerfile` — Production image (php:8.4-apache, installs mysqli + PEAR Mail)
+- `Dockerfile` — Production image (php:8.5-apache, installs mysqli + PEAR Mail)
 - `docker/docker-compose.yaml` — Local dev environment (MySQL + Nginx proxy + PHP)
 - `malshare_db.sql` — Database schema and stored procedures
 - `.github/workflows/docker.yml` — Build, push to GHCR, trigger conf repo dispatch
