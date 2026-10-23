@@ -95,8 +95,8 @@ PHP web application — the main malshare.com site for sharing and searching mal
 
 ## Key Files
 
-- `html/server_includes.php` — Core framework: DB connection, S3 integration, sample queries (~2000 lines)
-- `html/server_registration.php` — User registration, email (Mailgun)
+- `html/server_includes.php` — Core framework: DB connection, S3 integration, sample queries, user registration + Mailgun email (~2170 lines)
+- `html/include/disposable_email_domains.php` — Throwaway-email blocklist used by `register_user()`
 - `html/api.php` — REST API endpoints (getlist, getsources, dailysum, etc.)
 - `html/sample.php` — Sample detail view
 - `Dockerfile` — Production image (php:8.5-apache, installs mysqli + PEAR Mail)
